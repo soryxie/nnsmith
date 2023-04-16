@@ -22,6 +22,9 @@ def assert_allclose(
         lhs = actual[key]
         rhs = desired[key]
 
+        if lhs is None and rhs is None:
+            continue
+
         # check if lhs is np.ndarray
         if not isinstance(lhs, np.ndarray):
             raise TypeError(f"{actual_name}[{key}] is not np.ndarray but {type(lhs)}")

@@ -12,6 +12,7 @@ from nnsmith.materialize.torch.forward import ALL_TORCH_OPS
 from nnsmith.materialize.torch.input_gen import PracticalHybridSearch
 from nnsmith.materialize.torch.symbolnet import SymbolNet
 from nnsmith.util import register_seed_setter
+from nnsmith.logging import DTEST_LOG
 
 
 class TorchModel(Model, ABC):
@@ -52,22 +53,50 @@ class TorchModel(Model, ABC):
             self.sat_inputs = inputs
         self.torch_model.disable_proxy_grad()
 
-    def make_oracle(self) -> Oracle:
-        with torch.no_grad():
-            self.torch_model.eval()
-            # fall back to random inputs if no solution is found.
+    def make_oracle(self, requires_grad: bool = True, requires_param: bool = True) -> Oracle:
+        if requires_grad == False:
+            with torch.no_grad():
+                self.torch_model.eval()
+                # fall back to random inputs if no solution is found.
+                if self.sat_inputs is None:
+                    inputs = self.torch_model.get_random_inps()
+                else:
+                    inputs = self.sat_inputs
+                outputs = self.torch_model.forward(
+                    *[v.to(self.device()) for _, v in inputs.items()]
+                )
+        else:
             if self.sat_inputs is None:
                 inputs = self.torch_model.get_random_inps()
             else:
                 inputs = self.sat_inputs
+
+            # set parameter.requires_grad
+            grad_var_list = list(inputs.items()) if not requires_param else \
+                list(self.torch_model.named_parameters()) + list(inputs.items())
+            for name, param in grad_var_list:
+                DTEST_LOG.info(f"set grad:{name}")
+                param.requires_grad = param.data.is_floating_point()
+                param.grad = None
+
+            # get output
             outputs = self.torch_model.forward(
                 *[v.to(self.device()) for _, v in inputs.items()]
             )
+
+            # backward
+            for out in outputs:
+                if out.data.is_floating_point():
+                    if out.requires_grad:
+                        out.sum().backward(retain_graph=True)
+                    else:
+                        DTEST_LOG.info(f"out{type(out)} does not need grad")
 
         # numpyify
         input_dict = {k: v.cpu().detach().numpy() for k, v in inputs.items()}
         output_dict = {}
         for oname, val in zip(self.output_like.keys(), outputs):
+            DTEST_LOG.info(f"oname already have {oname}")
             output_dict[oname] = val.cpu().detach().numpy()
 
         # add grad to output_dict
