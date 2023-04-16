@@ -53,7 +53,7 @@ class TorchJIT(BackendFactory):
                     if self.target == "cpu" and NNSMITH_PTJIT_OPT_MOBILE:
                         exported = optimize_for_mobile(exported)
         else: # compilation requiring grad
-            torch_net = model.torch_model.to(self.device)
+            torch_net = model.torch_model.to(self.device).eval()
             trace_inp = [ts.to(self.device) for ts in torch_net.get_random_inps().values()]
 
             with torch.no_grad():
@@ -67,14 +67,19 @@ class TorchJIT(BackendFactory):
                         trace_inp,
                         strict=False # for parameters
                     )
+                    preserved = []
                     for name, param in exported.named_parameters():
-                        EXEC_LOG.info(f"set grad:{name}")
+                        '''EXEC_LOG.info(f"set grad:{name}")
                         param.requires_grad = param.data.is_floating_point()
-                        param.grad = None
-                    # exported = torch.jit.freeze(exported)  # Fronzen graph.
-                    # exported = torch.jit.optimize_for_inference(exported) # automicaliy invoke freeze
-                    # if self.target == "cpu" and NNSMITH_PTJIT_OPT_MOBILE:
-                    #     exported = optimize_for_mobile(exported)
+                        param.grad = None'''
+                        EXEC_LOG.info(f"preserved attr : {name}")
+                        preserved.append(name)
+
+                    exported = torch.jit.freeze(exported, preserved_attrs=preserved)  # Fronzen graph.
+                    exported = torch.jit.optimize_for_inference(exported) # automicaliy invoke freeze
+                    EXEC_LOG.info(f"{exported.code}")
+                    if self.target == "cpu" and NNSMITH_PTJIT_OPT_MOBILE:
+                        exported = optimize_for_mobile(exported)
 
         def closure(inputs: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
             if not requires_grad:
@@ -90,7 +95,7 @@ class TorchJIT(BackendFactory):
             else: # requires_grad
                 inputs ={n: torch.from_numpy(v).to(self.device) for n, v in inputs.items()}
                 grad_var_list = list(inputs.items()) if not requires_param \
-                    else list(exported.named_parameters()) + list(inputs.items())
+                    else list(torch_net.named_parameters()) + list(inputs.items())
                 for name, param in grad_var_list:
                     EXEC_LOG.info(f"set grad:{name}")
                     param.requires_grad = param.data.is_floating_point()
