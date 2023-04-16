@@ -9,7 +9,6 @@ from torch.utils.mobile_optimizer import optimize_for_mobile
 
 from nnsmith.backends.factory import BackendCallable, BackendFactory
 from nnsmith.materialize.torch import TorchModel
-from nnsmith.logging import EXEC_LOG
 
 # Check https://pytorch.org/tutorials/recipes/recipes/tuning_guide.html
 # for more PyTorch-internal options.
@@ -68,7 +67,6 @@ class TorchJIT(BackendFactory):
                         strict=False # for parameters
                     )
                     for name, param in exported.named_parameters():
-                        EXEC_LOG.info(f"set grad:{name}")
                         param.requires_grad = param.data.is_floating_point()
                         param.grad = None
                     # exported = torch.jit.freeze(exported)  # Fronzen graph.
@@ -92,7 +90,6 @@ class TorchJIT(BackendFactory):
                 grad_var_list = list(inputs.items()) if not requires_param \
                     else list(exported.named_parameters()) + list(inputs.items())
                 for name, param in grad_var_list:
-                    EXEC_LOG.info(f"set grad:{name}")
                     param.requires_grad = param.data.is_floating_point()
                     param.grad = None
 
@@ -111,17 +108,13 @@ class TorchJIT(BackendFactory):
                     if out.data.is_floating_point():
                         if out.requires_grad:
                             out.sum().backward(retain_graph=True)
-                        else:
-                            EXEC_LOG.info(f"out{type(out)} does not need grad")
 
                 # get grad
                 for name, param in grad_var_list:
                     if param.data.is_floating_point():
                         if param.grad == None:
-                            EXEC_LOG.info(f"get grad from {name}, but None {type(param)}")
                             output_dict['grad_' + name] = None
                         else:
-                            EXEC_LOG.info(f"get grad from {name}")
                             output_dict['grad_' + name] = param.grad.cpu().detach().numpy()
                         param.requires_grad = False
                 return output_dict

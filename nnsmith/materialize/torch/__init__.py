@@ -12,7 +12,6 @@ from nnsmith.materialize.torch.forward import ALL_TORCH_OPS
 from nnsmith.materialize.torch.input_gen import PracticalHybridSearch
 from nnsmith.materialize.torch.symbolnet import SymbolNet
 from nnsmith.util import register_seed_setter
-from nnsmith.logging import DTEST_LOG
 
 
 class TorchModel(Model, ABC):
@@ -75,7 +74,6 @@ class TorchModel(Model, ABC):
             grad_var_list = list(inputs.items()) if not requires_param else \
                 list(self.torch_model.named_parameters()) + list(inputs.items())
             for name, param in grad_var_list:
-                DTEST_LOG.info(f"set grad:{name}")
                 param.requires_grad = param.data.is_floating_point()
                 param.grad = None
 
@@ -89,14 +87,11 @@ class TorchModel(Model, ABC):
                 if out.data.is_floating_point():
                     if out.requires_grad:
                         out.sum().backward(retain_graph=True)
-                    else:
-                        DTEST_LOG.info(f"out{type(out)} does not need grad")
 
         # numpyify
         input_dict = {k: v.cpu().detach().numpy() for k, v in inputs.items()}
         output_dict = {}
         for oname, val in zip(self.output_like.keys(), outputs):
-            DTEST_LOG.info(f"oname already have {oname}")
             output_dict[oname] = val.cpu().detach().numpy()
 
         # add grad to output_dict
@@ -107,7 +102,6 @@ class TorchModel(Model, ABC):
                         output_dict['grad_' + name] = None
                     else:
                         output_dict['grad_' + name] = param.grad.cpu().detach().numpy()
-                    DTEST_LOG.info(f"get grad from {name}")
                     param.requires_grad = False
             return Oracle(input_dict, output_dict, provider="torch[cpu] eager-ad")
         else:
