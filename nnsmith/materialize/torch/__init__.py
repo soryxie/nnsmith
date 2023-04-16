@@ -74,7 +74,6 @@ class TorchModel(Model, ABC):
             grad_var_list = list(inputs.items()) if not requires_param else \
                 list(self.torch_model.named_parameters()) + list(inputs.items())
             for name, param in grad_var_list:
-                DTEST_LOG.info(f"set grad:{name}")
                 param.requires_grad = param.data.is_floating_point()
                 param.grad = None
 
