@@ -70,7 +70,19 @@ class TorchModel(Model, ABC):
         for oname, val in zip(self.output_like.keys(), outputs):
             output_dict[oname] = val.cpu().detach().numpy()
 
-        return Oracle(input_dict, output_dict, provider="torch[cpu] eager")
+        # add grad to output_dict
+        if requires_grad:
+            for name, param in grad_var_list:
+                if param.data.is_floating_point():
+                    if param.grad == None:
+                        output_dict['grad_' + name] = None
+                    else:
+                        output_dict['grad_' + name] = param.grad.cpu().detach().numpy()
+                    DTEST_LOG.info(f"get grad from {name}")
+                    param.requires_grad = False
+            return Oracle(input_dict, output_dict, provider="torch[cpu] eager-ad")
+        else:
+            return Oracle(input_dict, output_dict, provider="torch[cpu] eager")
 
     def dump(self, path: PathLike):
         torch.save(self.torch_model.state_dict(), path)
